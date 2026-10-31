@@ -65,6 +65,7 @@ internal class DerivDemoTradingEngine(
     private var pendingStake = 0.0
     private var pendingTimestamp = 0L
     private var lastRequestAt = 0L
+    private var contractLastSeenAt = 0L
 
     init {
         load()
@@ -121,6 +122,8 @@ internal class DerivDemoTradingEngine(
     private fun streak(): Int {
         var count = 0
         for (trade in state.trades) {
+            if (java.time.Instant.ofEpochMilli(trade.timestamp).atZone(java.time.ZoneId.systemDefault())
+                    .toLocalDate().toString() != day) break
             if (trade.profit > 0) break
             if (trade.profit < 0) count++
         }
@@ -134,6 +137,7 @@ internal class DerivDemoTradingEngine(
     }
 
     fun snapshot() = state
+    fun isRunning() = running
 
     fun setConnection(isConnected: Boolean, receivedBalance: Double = 0.0, accountCurrency: String = "USD") {
         connected = isConnected
@@ -197,8 +201,20 @@ internal class DerivDemoTradingEngine(
     }
 
     fun poll() {
-        if (!connected || !running || inFlight || waitingFor.isNotEmpty()) return
-        if (System.currentTimeMillis() - lastRequestAt < 50_000) return
+        if (!connected || !running) return
+        val now = System.currentTimeMillis()
+        if (waitingFor.isNotEmpty()) {
+            if (now - lastRequestAt > 30_000) fail("Timeout na Deriv: nenhuma ordem sera reenviada.")
+            return
+        }
+        if (inFlight) {
+            if (contractId != null && now - contractLastSeenAt > 40_000) {
+                contractLastSeenAt = now
+                subscribeContract()
+            }
+            return
+        }
+        if (now - lastRequestAt < 50_000) return
         requestCandles()
     }
 
@@ -348,6 +364,7 @@ internal class DerivDemoTradingEngine(
         }
         contractId = contract
         if (!persist()) { fail("Contrato recebido mas nao persistido. Acompanhe na Deriv."); return }
+        contractLastSeenAt = System.currentTimeMillis()
         subscribeContract()
         publish("EM CONTRATO", "Ordem DEMO confirmada: contrato #" + contract + " (payout " + proposedPayout.roundToInt() + "%).")
     }
@@ -364,7 +381,8 @@ internal class DerivDemoTradingEngine(
         if (!inFlight || contractId == null || msg.has("error")) return
         val item = msg.optJSONObject("proposal_open_contract") ?: return
         if (item.optString("contract_id") != contractId) return
-        val ended = item.optInt("is_sold") == 1 || item.optInt("is_expired") == 1
+        contractLastSeenAt = System.currentTimeMillis()
+        val ended = item.optInt("is_sold") == 1 || item.optBoolean("is_sold", false)
         if (!ended) return
         val profit = item.optDouble("profit", Double.NaN)
         if (!profit.isFinite()) {
