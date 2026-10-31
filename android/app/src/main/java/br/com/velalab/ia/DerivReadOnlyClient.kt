@@ -21,6 +21,8 @@ internal class DerivReadOnlyClient {
     private val http = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
+        // Mantém sockets ativos em redes móveis/Wi-Fi sujeitos a ociosidade.
+        .pingInterval(30, TimeUnit.SECONDS)
         .build()
     private var accountSocket: WebSocket? = null
     private var publicSocket: WebSocket? = null
@@ -37,6 +39,12 @@ internal class DerivReadOnlyClient {
     fun sendReal(payload: JSONObject): Boolean {
         if (connectedType != DerivAccountType.REAL) return false
         return accountSocket?.send(payload.toString()) == true
+    }
+
+    /** Ping de aplicação, não é ordem. Nunca muda a modalidade selecionada. */
+    fun keepAlive(type: DerivAccountType): Boolean {
+        if (connectedType != type) return false
+        return accountSocket?.send("""{"ping":1,"req_id":999999}""") == true
     }
 
 
@@ -109,7 +117,7 @@ internal class DerivReadOnlyClient {
     }
 
     /** Abre WS autenticado na conta solicitada e envia apenas consulta de saldo. */
-    fun connectAccount(url: String, type: DerivAccountType, onBalance: (Double, String) -> Unit, onError: () -> Unit) {
+    fun connectAccount(url: String, type: DerivAccountType, onBalance: (Double, String) -> Unit, onError: (String) -> Unit) {
         require(DerivEndpointPolicy.isOfficialAccountUrl(url, type)) { "URL incompatível com conta ${type.displayName}" }
         closeAccount()
         connectedType = type
@@ -125,7 +133,11 @@ internal class DerivReadOnlyClient {
                         DerivAccountType.REAL -> realMessageListener?.invoke(msg)
                     }
                     if (msg.has("error") && (msg.optInt("req_id") == 1 || msg.optString("msg_type") == "balance")) {
-                        onError(); webSocket.close(1000, "Erro"); return
+                        val code = msg.optJSONObject("error")?.optString("code").orEmpty()
+                            .takeIf { it.matches(Regex("[A-Za-z0-9_]{1,60}")) } ?: "sem_codigo"
+                        onError("Deriv recusou consulta do saldo (código $code).")
+                        webSocket.close(1000, "Consulta recusada")
+                        return
                     }
                     if (msg.optString("msg_type") == "balance") {
                         val item = msg.getJSONObject("balance")
@@ -134,10 +146,24 @@ internal class DerivReadOnlyClient {
                         if (!value.isFinite()) throw IllegalStateException("Saldo inválido")
                         onBalance(value, currency)
                     }
-                } catch (_: Exception) { onError(); webSocket.close(1000, "Erro de leitura") }
+                } catch (_: Exception) {
+                    onError("Resposta de saldo inválida. Verifique permissões e tipo da conta.")
+                    webSocket.close(1000, "Resposta inválida")
+                }
             }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { onError() }
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { onError() }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                val status = response?.code
+                val detail = when (status) {
+                    401, 403 -> "Autenticação WebSocket recusada (HTTP $status). Token/OTP ou permissões."
+                    null -> "Canal WebSocket interrompido; verifique internet e tente reconectar."
+                    else -> "Falha ao abrir WebSocket autenticado (HTTP $status)."
+                }
+                // Não mostrar t.message nem o URL: ambos podem conter o OTP secreto.
+                onError(detail)
+            }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                onError("Sessão WebSocket encerrada (código $code). Reconecte a conta.")
+            }
         })
     }
 
