@@ -13,9 +13,8 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Preferencias locais por ambiente, independentes do simulador ficticio.
- * Nao envia limites ao broker nem autoriza operacoes. Quando o executor DEMO/REAL
- * for implementado devera ler configuracao autenticada e aplicar OrderLedger
- * no servidor antes de enviar cada ordem; nao confiar apenas no telefone.
+ * O executor DEMO local le este limite antes de cada entrada. Nao e limite
+ * de conta da corretora e nao cobre negocios feitos fora do aplicativo.
  */
 internal data class BrokerDailyLimit(
     val percent: Double = 3.0,
@@ -74,7 +73,7 @@ internal fun BrokerDailyLossControls(type: DerivAccountType) {
         try {
             storage.save(type, value)
             saved = value
-            info = "Limite ${type.displayName} salvo neste celular. Protecao do servidor ainda nao conectada."
+            info = "Limite salvo. DEMO aplica este valor no proximo inicio do robo; REAL nao negocia."
         } catch (_: Exception) {
             info = "Nao foi possivel salvar a configuracao."
         }
@@ -144,8 +143,8 @@ internal fun BrokerDailyLossControls(type: DerivAccountType) {
                 Text(info, style = MaterialTheme.typography.bodySmall)
             }
             Spacer(Modifier.height(8.dp))
-            Text("IMPORTANTE: esta configuracao esta salva localmente e ainda NAO controla " +
-                 "operacoes da Deriv. O robô da corretora continua indisponivel nesta versao.",
+            Text("Controle local: no DEMO aplica-se ao robo deste aplicativo quando iniciado. " +
+                 "Nao cobre operacoes externas na corretora nem garante que perdas parem exatamente no teto.",
                  style = MaterialTheme.typography.bodySmall,
                  color = MaterialTheme.colorScheme.error)
         }
