@@ -14,7 +14,7 @@ import kotlin.math.roundToInt
  * Funciona somente enquanto o app/conexao permanecem ativos; nao e servico 24h.
  * Ordens de compra em estado incerto NAO sao reenviadas.
  */
-internal data class DemoTrade(
+data class DemoTrade(
     val contractId: String,
     val symbol: String,
     val direction: String,
@@ -23,7 +23,7 @@ internal data class DemoTrade(
     val timestamp: Long
 )
 
-internal data class DemoBotState(
+data class DemoBotState(
     val status: String = "PARADO",
     val notice: String = "Conecte a conta DEMO e inicie o robo.",
     val contractId: String? = null,
@@ -77,8 +77,8 @@ internal class DerivDemoTradingEngine(
         lastSignalCandle = prefs.getLong("lastSignalCandle", 0L)
         inFlight = prefs.getBoolean("inFlight", false)
         contractId = prefs.getString("contractId", null)
-        pendingSymbol = prefs.getString("pendingSymbol", "")
-        pendingDirection = prefs.getString("pendingDirection", "")
+        pendingSymbol = prefs.getString("pendingSymbol", "") ?: ""
+        pendingDirection = prefs.getString("pendingDirection", "") ?: ""
         pendingStake = Double.fromBits(prefs.getLong("pendingStake", 0.0.toBits()))
         pendingTimestamp = prefs.getLong("pendingTimestamp", 0L)
         val records = mutableListOf<DemoTrade>()
