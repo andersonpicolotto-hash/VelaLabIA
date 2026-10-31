@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "VelaLabIA-Completo-Base.zip"
+      - ".github/workflows/velalab-apk.yml"
 
 permissions:
   contents: write
@@ -39,11 +40,35 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Adaptar teste de rotas a versoes atuais do FastAPI
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("backend/tests/test_research_and_live_safety.py")
+          text = p.read_text(encoding="utf-8")
+          old = "routes={x.path for x in api.routes}"
+          new = "routes={x.path for x in api.routes if hasattr(x, 'path')}"
+          if old not in text and new not in text:
+              raise SystemExit("O teste mudou; revisar antes de alterar.")
+          p.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+
       - name: Testar backend
         run: |
           python -m pip install -r backend/requirements-dev.txt
           cd backend
           python -m pytest -q
+
+      - name: Salvar codigo-fonte organizado
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android backend docs .gitignore .dockerignore compose.yaml README.md
+          if ! git diff --cached --quiet; then
+            git commit -m "feat: importar fontes VelaLab IA e laboratorio experimental"
+            git push
+          fi
 
       - name: Preparar Java 17
         uses: actions/setup-java@v4
@@ -81,13 +106,3 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Salvar codigo-fonte organizado
-        if: success()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add android backend docs .gitignore .dockerignore compose.yaml README.md
-          if ! git diff --cached --quiet; then
-            git commit -m "feat: importar fontes VelaLab IA e laboratorio experimental"
-            git push
-          fi
