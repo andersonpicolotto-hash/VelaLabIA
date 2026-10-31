@@ -143,7 +143,7 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 delay(10_000)
                 engine.poll()
-                if (engine.snapshot().status != "ATIVO") break
+                if (!engine.isRunning()) break
             }
         }
     }
