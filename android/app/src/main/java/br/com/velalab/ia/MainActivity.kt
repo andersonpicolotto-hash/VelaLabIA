@@ -70,6 +70,7 @@ private fun VelaApp(vm: SimViewModel = viewModel(), derivVm: DerivConnectionView
     val state by vm.ui.collectAsState()
     val deriv by derivVm.ui.collectAsState()
     val demo by derivVm.demo.collectAsState()
+    val real by derivVm.real.collectAsState()
     var tab by remember { mutableStateOf(Tab.HOME) }
     Scaffold(
         containerColor = Background,
@@ -77,7 +78,7 @@ private fun VelaApp(vm: SimViewModel = viewModel(), derivVm: DerivConnectionView
             Column(Modifier.fillMaxWidth().background(Background).padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 10.dp)) {
                 Text("VELALAB IA", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = Light)
                 Spacer(Modifier.height(3.dp))
-                Text("DERIV DEMO  •  AUTOMAÇÃO EXPERIMENTAL", style = MaterialTheme.typography.labelSmall, color = Accent)
+                Text("DERIV DEMO / REAL  •  EXPERIMENTAL", style = MaterialTheme.typography.labelSmall, color = Accent)
             }
         },
         bottomBar = {
@@ -103,8 +104,8 @@ private fun VelaApp(vm: SimViewModel = viewModel(), derivVm: DerivConnectionView
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                Tab.HOME -> Dashboard(state, vm, deriv, demo)
-                Tab.TRADES -> TradeHistory(state, demo)
+                Tab.HOME -> Dashboard(state, vm, deriv, demo, real)
+                Tab.TRADES -> TradeHistory(state, demo, real)
                 Tab.RESEARCH -> ResearchPage()
                 Tab.CONNECTION -> ConnectionPage(deriv, derivVm, state.settings)
                 Tab.SETTINGS -> RiskSettingsPage(state.settings, vm)
@@ -133,11 +134,13 @@ private fun SectionTitle(title: String) {
 }
 
 @Composable
-private fun Dashboard(state: SimulatorUiState, vm: SimViewModel, deriv: DerivConnectionUiState, demo: DemoBotState) {
+private fun Dashboard(state: SimulatorUiState, vm: SimViewModel, deriv: DerivConnectionUiState, demo: DemoBotState, real: DemoBotState) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text("ROBÔ DERIV DEMO: " + demo.status + " • resultado hoje: " + money(demo.todayProfit),
+        Text("ROBÔ DERIV " + deriv.accountType.displayName + ": " + if (deriv.accountType == DerivAccountType.REAL) real.status else demo.status,
+            color = Accent, fontWeight = FontWeight.Bold)
+        Text("Resultado da conta selecionada: " + money(if (deriv.accountType == DerivAccountType.REAL) real.todayProfit else demo.todayProfit),
             color = if (demo.todayProfit >= 0) Green else Red, fontWeight = FontWeight.Bold)
-        Text("Para operar na conta DEMO, abra a aba Conexão e inicie o robô.",
+        Text("Para operar na conta escolhida, abra Conexão, configure os limites e inicie explicitamente.",
             color = Muted, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
         Surface(color = Color(0xFF1B2F43), shape = RoundedCornerShape(12.dp)) {
@@ -215,8 +218,24 @@ private fun VirtualEquityChart(trades: List<SimTrade>) {
 }
 
 @Composable
-private fun TradeHistory(state: SimulatorUiState, demo: DemoBotState) {
+private fun TradeHistory(state: SimulatorUiState, demo: DemoBotState, real: DemoBotState) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        SectionTitle("Operações Deriv REAL")
+        Spacer(Modifier.height(8.dp))
+        Text("Resultado REAL hoje: " + money(real.todayProfit) + " • " + real.trades.size + " contratos liquidados",
+            color = if (real.todayProfit >= 0) Green else Red)
+        if (real.contractId != null) Text("Contrato REAL aberto: #" + real.contractId, color = Red)
+        real.trades.take(5).forEach { trade ->
+            Surface(color = CardDark, shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(trade.symbol + " • " + trade.direction + " • #" + trade.contractId)
+                    Text("Entrada: " + money(trade.stake) + " • Resultado: " + money(trade.profit),
+                        color = if (trade.profit >= 0) Green else Red)
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
         SectionTitle("Operações Deriv DEMO")
         Spacer(Modifier.height(8.dp))
         Text("Resultado DEMO de hoje: " + money(demo.todayProfit) + " • " + demo.trades.size + " contratos liquidados",
@@ -298,6 +317,8 @@ private fun ResearchPage() {
 @Composable
 private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionViewModel, settings: RiskSettings) {
     val demo by vm.demo.collectAsState()
+    val real by vm.real.collectAsState()
+    var showRealConsentDialog by remember { mutableStateOf(false) }
     var symbol by remember { mutableStateOf("R_100") }
     var appId by remember { mutableStateOf("") }
     var pat by remember { mutableStateOf("") }
@@ -306,7 +327,9 @@ private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionVie
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionTitle("Conexão oficial • Deriv")
         Spacer(Modifier.height(8.dp))
-        Text("DEMO: conexão e ordens demonstrativas automáticas na Deriv. REAL: somente leitura; compras bloqueadas.", color = Muted)
+        Text("Selecione DEMO ou REAL. Ambas oferecem conexão e execução automática experimental. " +
+            "A REAL requer consentimento específico antes de iniciar e utiliza dinheiro de verdade.",
+            color = Muted)
         Spacer(Modifier.height(15.dp))
         InfoCard("Estado da conexão", state.status,
             if (state.status.startsWith("CONECTADO")) Green else if (state.status == "DESCONECTADO") Muted else Red,
@@ -338,13 +361,14 @@ private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionVie
         if (accountType == DerivAccountType.REAL) {
             Surface(color = CardDark, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("CONTA REAL — CONSULTA DE SALDO SOMENTE", color = Red, fontWeight = FontWeight.Bold)
+                    Text("CONTA REAL • OPERAÇÕES COM DINHEIRO", color = Red, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(6.dp))
-                    Text("Isto acessa dados financeiros reais. Não habilita o robô, não envia ordens e não altera o modo do simulador.",
+                    Text("Apenas conectar consulta o saldo. O envio de ordens exige clicar em Iniciar REAL e confirmar o risco. " +
+                        "A estratégia é experimental e pode perder dinheiro.",
                         color = Muted, style = MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = realAcknowledged, onCheckedChange = { realAcknowledged = it })
-                        Text("Confirmo que quero consultar minha conta REAL", style = MaterialTheme.typography.bodySmall)
+                        Text("Confirmo que quero conectar minha conta REAL", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -392,6 +416,63 @@ private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionVie
                 color = if (demo.todayProfit >= 0) Green else Red)
             Spacer(Modifier.height(14.dp))
         }
+        if (accountType == DerivAccountType.REAL) {
+            SectionTitle("ROBÔ AUTOMÁTICO • DERIV REAL")
+            Spacer(Modifier.height(8.dp))
+            InfoCard("Estado do robô REAL", real.status,
+                if (real.status == "ATIVO") Green else Red, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Text(real.notice, color = if (real.status == "BLOQUEADO") Red else Muted,
+                style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            Text("Ativo (disponibilidade a confirmar na Deriv)", color = Muted,
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("R_100", "1HZ100V", "frxEURUSD").forEach { choice ->
+                    FilterChip(selected = symbol == choice, onClick = { symbol = choice },
+                        enabled = real.status !in listOf("ATIVO", "COMPRANDO", "EM CONTRATO"),
+                        label = { Text(choice, style = MaterialTheme.typography.labelSmall) })
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Usa EMA9/EMA21 + RSI em candles fechados. No máximo 1% por compra e " +
+                "uma operação por vez, limite diário REAL configurado acima, pausa após perdas. " +
+                "Sem martingale. Não houve validação de rentabilidade e não há proteção garantida.",
+                color = Red, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = { showRealConsentDialog = true },
+                    enabled = realAcknowledged && state.status == "CONECTADO - REAL" &&
+                        real.status !in listOf("ATIVO", "COMPRANDO", "EM CONTRATO", "RECUPERANDO", "BLOQUEADO"),
+                    modifier = Modifier.weight(1f)) { Text("Iniciar REAL") }
+                OutlinedButton(onClick = vm::pauseReal, modifier = Modifier.weight(1f)) { Text("Pausar") }
+                OutlinedButton(onClick = vm::stopReal, modifier = Modifier.weight(1f)) { Text("Parar") }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Resultado REAL hoje: " + money(real.todayProfit) + " " + state.currency +
+                " • Perdas seguidas: " + real.lossStreak + " • Liquidadas: " + real.trades.size,
+                color = if (real.todayProfit >= 0) Green else Red)
+            Spacer(Modifier.height(14.dp))
+        }
+        if (showRealConsentDialog) {
+            AlertDialog(
+                onDismissRequest = { showRealConsentDialog = false },
+                title = { Text("CONFIRMAR OPERAÇÕES REAIS") },
+                text = { Text("Esta ação pode comprar contratos automaticamente usando DINHEIRO REAL " +
+                    "na Deriv, com risco de perder cada entrada. A estratégia não foi validada " +
+                    "com conta real e pode operar de forma incorreta. " +
+                    "Confirme somente se aceita esse risco. Não ativaremos a conta REAL automaticamente.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showRealConsentDialog = false
+                        vm.startReal(settings, symbol, explicitAuthorization = true)
+                    }) { Text("CONFIRMO INICIAR REAL", color = Red) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRealConsentDialog = false }) { Text("Cancelar") }
+                }
+            )
+        }
         Text("Cadastre um aplicativo PAT na Deriv e gere um token com permissões restritas. Nunca envie senha ou token por chat ou GitHub.",
             color = Muted, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
@@ -408,15 +489,16 @@ private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionVie
             pat = ""  // não salvar PAT no aparelho
         }, enabled = state.status != "CONECTANDO" && (accountType != DerivAccountType.REAL || realAcknowledged),
             modifier = Modifier.fillMaxWidth()) {
-            Text(if (accountType == DerivAccountType.DEMO) "Conectar conta DEMO à Deriv" else "Conectar REAL — somente leitura")
+            Text(if (accountType == DerivAccountType.DEMO) "Conectar conta DEMO à Deriv" else "Conectar conta REAL à Deriv")
         }
         OutlinedButton(onClick = vm::disconnect, modifier = Modifier.fillMaxWidth()) { Text("Desconectar") }
         Spacer(Modifier.height(12.dp))
         Surface(color = CardDark, shape = RoundedCornerShape(12.dp)) {
             Column(Modifier.padding(14.dp)) {
-                Text("ORDENS REAIS: DESATIVADAS", color = Red, fontWeight = FontWeight.Bold)
+                Text("ORDENS REAIS: APENAS APÓS CONFIRMAÇÃO", color = Red, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
-                Text("É possível consultar saldo REAL, mas não comprar contratos. O saldo DEMO e o saldo fictício do simulador não são misturados.",
+                Text("DEMO e REAL são contas separadas. A conta REAL não é iniciada sozinha. " +
+                    "A automação é experimental e ainda precisa de testes autenticados e de segurança.",
                     color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -452,14 +534,14 @@ private fun RiskSettingsPage(settings: RiskSettings, vm: SimViewModel) {
     if (confirmSettings != null) {
         AlertDialog(onDismissRequest = { confirmSettings = null },
             title = { Text("Confirmar aumento de risco") },
-            text = { Text("Estas configurações também podem aumentar o risco da próxima sessão DEMO. Deseja salvá-las?") },
+            text = { Text("Estas configurações também podem aumentar o risco da próxima sessão DEMO ou REAL. Deseja salvá-las?") },
             confirmButton = { TextButton(onClick = { error = vm.saveSettings(confirmSettings!!); confirmSettings = null }) { Text("Confirmar") } },
             dismissButton = { TextButton(onClick = { confirmSettings = null }) { Text("Cancelar") } })
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionTitle("Gerenciamento de banca")
         Spacer(Modifier.height(6.dp))
-        Text("As configurações são usadas no simulador e no robô DEMO ao iniciar. O limite diário DEMO adicional fica na aba Conexão.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        Text("As configurações são usadas no simulador e nos robôs DEMO/REAL ao iniciar. Cada conta tem seu próprio limite diário na aba Conexão.", color = Muted, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(15.dp))
         DecimalField("Entrada padrão (%)", stake) { stake = it }
         DecimalField("Entrada máxima (%)", stakeMax) { stakeMax = it }
@@ -470,7 +552,7 @@ private fun RiskSettingsPage(settings: RiskSettings, vm: SimViewModel) {
         Text("Máximo simultâneo: $concurrent", color = Light, fontWeight = FontWeight.SemiBold)
         Slider(value = concurrent.toFloat(), onValueChange = { concurrent = it.toInt().coerceIn(1, 4) }, valueRange = 1f..4f, steps = 2)
         Spacer(Modifier.height(8.dp))
-        Text("Vencimento virtual e DEMO", color = Light, fontWeight = FontWeight.SemiBold)
+        Text("Vencimento: virtual, DEMO ou REAL", color = Light, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(1 to "1 minuto", 5 to "5 minutos", 0 to "Ambos").forEach { (minutes, label) ->
