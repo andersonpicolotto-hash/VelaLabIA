@@ -18,6 +18,7 @@ class RiskLimits:
     stake_percent: Decimal = D("0.5")
     max_stake_percent: Decimal = D("1.0")
     max_daily_loss_percent: Decimal = D("3.0")
+    max_daily_loss_amount: Decimal | None = None  # Teto opcional na moeda da conta
     max_consecutive_losses: int = 4
     max_open: int = 1
     min_payout_percent: Decimal = D("80")
@@ -25,8 +26,11 @@ class RiskLimits:
     def __post_init__(self):
         if not (D("0") < self.stake_percent <= self.max_stake_percent <= D("1")):
             raise ValueError("Limites por entrada inválidos")
-        if not (D("0") < self.max_daily_loss_percent <= D("3")):
-            raise ValueError("Limite diário inválido")
+        if not self.max_daily_loss_percent.is_finite() or not (D("0.1") <= self.max_daily_loss_percent <= D("25")):
+            raise ValueError("Limite diário percentual inválido (0,1% a 25%)")
+        if self.max_daily_loss_amount is not None:
+            if not self.max_daily_loss_amount.is_finite() or self.max_daily_loss_amount < D("1"):
+                raise ValueError("Limite diário monetário inválido")
         if not 1 <= self.max_open <= 4 or not 1 <= self.max_consecutive_losses <= 4:
             raise ValueError("Limites de concorrência ou perdas inválidos")
         if not D("80") <= self.min_payout_percent <= D("100"):
@@ -93,6 +97,9 @@ class OrderLedger:
                 gross_day_start = b - realised  # estimativa conservadora exige snapshot de saldo atual
                 if gross_day_start <= 0: raise RiskRejected("Saldo de abertura inválido")
                 budget = gross_day_start * self.limits.max_daily_loss_percent / 100
+                if self.limits.max_daily_loss_amount is not None:
+                    budget = min(budget, self.limits.max_daily_loss_amount)
+                # A exposição potencial das posições abertas consome o orçamento.
                 if max(D("0"), -realised) + exposure + amount > budget:
                     raise RiskRejected("Exposição potencial supera perda diária")
                 streak = 0
