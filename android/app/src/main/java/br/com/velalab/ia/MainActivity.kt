@@ -139,7 +139,7 @@ private fun Dashboard(state: SimulatorUiState, vm: SimViewModel, deriv: DerivCon
         Text("ROBÔ DERIV " + deriv.accountType.displayName + ": " + if (deriv.accountType == DerivAccountType.REAL) real.status else demo.status,
             color = Accent, fontWeight = FontWeight.Bold)
         Text("Resultado da conta selecionada: " + money(if (deriv.accountType == DerivAccountType.REAL) real.todayProfit else demo.todayProfit),
-            color = if (demo.todayProfit >= 0) Green else Red, fontWeight = FontWeight.Bold)
+            color = if ((if (deriv.accountType == DerivAccountType.REAL) real.todayProfit else demo.todayProfit) >= 0) Green else Red, fontWeight = FontWeight.Bold)
         Text("Para operar na conta escolhida, abra Conexão, configure os limites e inicie explicitamente.",
             color = Muted, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
@@ -561,7 +561,7 @@ private fun RiskSettingsPage(settings: RiskSettings, vm: SimViewModel) {
         }
         Spacer(Modifier.height(12.dp))
         Surface(color = CardDark, shape = RoundedCornerShape(12.dp)) {
-            Text("Martingale: DESATIVADO  •  Conta real: BLOQUEADA", color = Muted, modifier = Modifier.padding(12.dp), textAlign = TextAlign.Start)
+            Text("Martingale: DESATIVADO  •  Conta REAL: início manual com confirmação", color = Muted, modifier = Modifier.padding(12.dp), textAlign = TextAlign.Start)
         }
         if (error != null) {
             Spacer(Modifier.height(10.dp))
