@@ -40,17 +40,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Adaptar teste de rotas a versoes atuais do FastAPI
+      - name: Fixar FastAPI na versao validada
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path("backend/tests/test_research_and_live_safety.py")
+          p = Path("backend/requirements.txt")
           text = p.read_text(encoding="utf-8")
-          old = "routes={x.path for x in api.routes}"
-          new = "routes={x.path for x in api.routes if hasattr(x, 'path')}"
+          old = "fastapi>=0.115,<1"
+          new = "fastapi==0.128.2"
           if old not in text and new not in text:
-              raise SystemExit("O teste mudou; revisar antes de alterar.")
+              raise SystemExit("Revisar versão do FastAPI antes de continuar")
           p.write_text(text.replace(old, new), encoding="utf-8")
           PY
 
