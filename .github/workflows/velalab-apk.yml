@@ -1,0 +1,100 @@
+name: VelaLab IA - importar codigo e gerar APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "VelaLabIA-Deriv-Fase1.zip"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - name: Baixar repositorio
+        uses: actions/checkout@v4
+
+      - name: Extrair codigo fonte se houver pacote
+        shell: bash
+        run: |
+          if [ -f VelaLabIA-Deriv-Fase1.zip ]; then
+            mkdir -p _source_import
+            unzip -q -o VelaLabIA-Deriv-Fase1.zip -d _source_import
+            test -f _source_import/VelaLabIA/android/settings.gradle.kts
+            test -f _source_import/VelaLabIA/backend/requirements-dev.txt
+            cp -a _source_import/VelaLabIA/android .
+            cp -a _source_import/VelaLabIA/backend .
+            cp -a _source_import/VelaLabIA/docs .
+            cp -a _source_import/VelaLabIA/.gitignore .
+            cp -a _source_import/VelaLabIA/README.md .
+            rm -rf _source_import
+          fi
+          test -f android/settings.gradle.kts
+          test -f backend/requirements-dev.txt
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Testar backend
+        shell: bash
+        run: |
+          python -m pip install -r backend/requirements-dev.txt
+          cd backend
+          python -m pytest -q
+
+      - name: Preparar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Preparar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar plataforma Android 35
+        shell: bash
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Preparar Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Compilar APK de desenvolvimento
+        working-directory: android
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Gerar resumo de integridade
+        shell: bash
+        run: |
+          cd android/app/build/outputs/apk/debug
+          sha256sum app-debug.apk > APK-SHA256.txt
+
+      - name: Publicar APK para instalar no celular
+        uses: actions/upload-artifact@v4
+        with:
+          name: VelaLabIA-fase1-APK
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/APK-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Salvar arquivos fonte no repositorio
+        if: success() && hashFiles('VelaLabIA-Deriv-Fase1.zip') != ''
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android backend docs .gitignore README.md
+          if ! git diff --cached --quiet; then
+            git commit -m "feat(fase1): importar codigo fonte Deriv e simulador"
+            git push
+          fi
