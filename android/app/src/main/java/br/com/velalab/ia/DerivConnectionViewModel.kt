@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-/** Corretora real e simulador ficticio permanecem separados. Compras apenas em DEMO. */
+/** Contas DEMO e REAL isoladas. REAL só inicia após confirmação da sessão. */
 data class DerivConnectionUiState(
     val status: String = "DESCONECTADO",
     val accountType: DerivAccountType = DerivAccountType.DEMO,
@@ -32,6 +32,11 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
     private val engine = DerivDemoTradingEngine(app.applicationContext, { client.sendDemo(it) }) {
         _demo.value = it
     }
+    private val _real = MutableStateFlow(DemoBotState(notice = "REAL: conecte a conta e autorize o inicio conscientemente."))
+    val real = _real.asStateFlow()
+    private val realEngine = DerivRealTradingEngine(app.applicationContext, { client.sendReal(it) }) {
+        _real.value = it
+    }
     private val limitStorage = BrokerDailyLossStorage(app.applicationContext)
     private var session = 0
     private var publicSession = 0
@@ -40,6 +45,9 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
     init {
         client.demoMessageListener = { json: JSONObject ->
             viewModelScope.launch { engine.onMessage(json) }
+        }
+        client.realMessageListener = { json: JSONObject ->
+            viewModelScope.launch { realEngine.onMessage(json) }
         }
     }
 
@@ -90,10 +98,13 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
                                 it.copy(status = "CONECTADO - " + type.displayName, balance = balance,
                                     currency = currency, message = if (type == DerivAccountType.DEMO)
                                         "Conectado a DEMO: o robo pode operar apos voce apertar Iniciar DEMO."
-                                    else "Consulta REAL somente leitura. Ordens REAL bloqueadas.")
+                                    else "REAL conectada. Inicie explicitamente na area de automacao, com confirmacao de risco.")
                             }
-                            if (firstBalance && type == DerivAccountType.DEMO) {
-                                engine.setConnection(true, balance, currency)
+                            if (firstBalance) {
+                                when(type) {
+                                    DerivAccountType.DEMO -> engine.setConnection(true, balance, currency)
+                                    DerivAccountType.REAL -> realEngine.setConnection(true, balance, currency)
+                                }
                             }
                         }
                     }
@@ -103,6 +114,7 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
                             ++session
                             stopPolling()
                             engine.setConnection(false)
+                            realEngine.setConnection(false)
                             client.closeAccount()
                             _ui.update { it.copy(status = "ERRO DE CONEXÃO", balance = null,
                                 message = "Conexao encerrada ou invalida. Verifique a internet e reconecte.") }
@@ -120,6 +132,7 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
                 ++session
                 client.closeAccount()
                 engine.setConnection(false)
+                realEngine.setConnection(false)
                 _ui.update { it.copy(status = "ERRO DE CONEXÃO", balance = null,
                     message = "Tempo esgotado para confirmar saldo.") }
             }
@@ -148,6 +161,46 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * O botão REAL exige diálogo separado na interface. Nunca reutilizar aprovação
+     * da conta DEMO ou marcar autorização automaticamente.
+     */
+    fun startReal(config: RiskSettings, symbol: String, explicitAuthorization: Boolean) {
+        val s = _ui.value
+        if (s.accountType != DerivAccountType.REAL || !s.status.startsWith("CONECTADO")) {
+            _real.update { it.copy(notice = "Primeiro conecte sua conta REAL na Deriv.") }
+            return
+        }
+        if (!explicitAuthorization) {
+            _real.update { it.copy(notice = "Confirmação obrigatória para cada início REAL.") }
+            return
+        }
+        val error = realEngine.start(s.balance ?: 0.0, s.currency, config,
+            limitStorage.load(DerivAccountType.REAL), symbol.trim(), explicitAuthorization)
+        if (error != null) {
+            _real.update { it.copy(notice = error) }
+            return
+        }
+        stopPolling()
+        polling = viewModelScope.launch {
+            while (true) {
+                delay(10_000)
+                realEngine.poll()
+                if (!realEngine.isRunning()) break
+            }
+        }
+    }
+
+    fun pauseReal() {
+        stopPolling()
+        realEngine.pause()
+    }
+
+    fun stopReal() {
+        stopPolling()
+        realEngine.stop()
+    }
+
     fun pauseDemo() {
         stopPolling()
         engine.pause()
@@ -167,6 +220,7 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
         ++session
         stopPolling()
         engine.setConnection(false)
+        realEngine.setConnection(false)
         client.closeAccount()
         _ui.update { it.copy(status = "DESCONECTADO", balance = null, currency = "",
             message = "Sessao encerrada. Operacoes ficticias continuam independentes.") }
@@ -177,6 +231,7 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
         ++publicSession
         stopPolling()
         engine.setConnection(false)
+        realEngine.setConnection(false)
         client.close()
         super.onCleared()
     }
