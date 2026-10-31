@@ -41,6 +41,38 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
     private var session = 0
     private var publicSession = 0
     private var polling: Job? = null
+    private var heartbeat: Job? = null
+
+    private fun stopHeartbeat() {
+        heartbeat?.cancel()
+        heartbeat = null
+    }
+
+    private fun startHeartbeat(connectionId: Int, type: DerivAccountType) {
+        stopHeartbeat()
+        heartbeat = viewModelScope.launch {
+            while (true) {
+                delay(30_000)
+                if (connectionId != session || _ui.value.status != "CONECTADO - ${type.displayName}") break
+                if (!client.keepAlive(type)) {
+                    handleConnectionLost(connectionId, "A conexão autenticada caiu. Confira a internet e reconecte.")
+                    break
+                }
+            }
+        }
+    }
+
+    private fun handleConnectionLost(connectionId: Int, reason: String) {
+        if (connectionId != session) return
+        ++session
+        stopPolling()
+        stopHeartbeat()
+        engine.setConnection(false)
+        realEngine.setConnection(false)
+        client.closeAccount()
+        _ui.update { it.copy(status = "ERRO DE CONEXÃO", balance = null,
+            message = reason) }
+    }
 
     init {
         client.demoMessageListener = { json: JSONObject ->
@@ -105,25 +137,28 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
                                     DerivAccountType.DEMO -> engine.setConnection(true, balance, currency)
                                     DerivAccountType.REAL -> realEngine.setConnection(true, balance, currency)
                                 }
+                                startHeartbeat(id, type)
                             }
                         }
                     }
-                }, onError = {
-                    viewModelScope.launch {
-                        if (id == session) {
-                            ++session
-                            stopPolling()
-                            engine.setConnection(false)
-                            realEngine.setConnection(false)
-                            client.closeAccount()
-                            _ui.update { it.copy(status = "ERRO DE CONEXÃO", balance = null,
-                                message = "Conexao encerrada ou invalida. Verifique a internet e reconecte.") }
-                        }
-                    }
+                }, onError = { reason ->
+                    viewModelScope.launch { handleConnectionLost(id, reason) }
                 })
-            } catch (_: Exception) {
-                if (id == session) _ui.update { it.copy(status = "ERRO DE CONEXÃO", balance = null,
-                    message = "Nao foi possivel autenticar a conta. Confira PAT, App ID, rede e permissoes.") }
+            } catch (error: Exception) {
+                if (id == session) {
+                    val detail = error.message.orEmpty()
+                    val safeReason = when {
+                        detail.matches(Regex("Deriv HTTP [0-9]{3}")) ->
+                            "Autenticação recusada pela Deriv ($detail). Verifique PAT, App ID e escopo Trade."
+                        detail.startsWith("Nenhuma conta ") ->
+                            "A Deriv não retornou uma conta deste tipo. Confira se selecionou DEMO ou REAL."
+                        detail.startsWith("URL da conta ") ->
+                            "A Deriv retornou um endereço de sessão incompatível com a conta."
+                        else -> "Falha na autenticação. Confira App ID, PAT, permissões e internet."
+                    }
+                    _ui.update { it.copy(status = "ERRO DE CONEXÃO", balance = null,
+                        message = safeReason) }
+                }
             }
         }
         viewModelScope.launch {
@@ -219,6 +254,7 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
     fun disconnect() {
         ++session
         stopPolling()
+        stopHeartbeat()
         engine.setConnection(false)
         realEngine.setConnection(false)
         client.closeAccount()
@@ -230,6 +266,7 @@ class DerivConnectionViewModel(app: Application) : AndroidViewModel(app) {
         ++session
         ++publicSession
         stopPolling()
+        stopHeartbeat()
         engine.setConnection(false)
         realEngine.setConnection(false)
         client.close()
