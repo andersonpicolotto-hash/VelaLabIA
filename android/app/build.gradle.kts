@@ -12,8 +12,8 @@ android {
         applicationId = "br.com.velalab.ia"
         minSdk = 33
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.4.0-real-opt-in"
+        versionCode = 6
+        versionName = "0.4.1-connection-fix"
     }
 
     buildTypes {
