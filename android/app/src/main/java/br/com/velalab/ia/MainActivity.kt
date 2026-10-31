@@ -69,6 +69,7 @@ private enum class Tab(val label: String) {
 private fun VelaApp(vm: SimViewModel = viewModel(), derivVm: DerivConnectionViewModel = viewModel()) {
     val state by vm.ui.collectAsState()
     val deriv by derivVm.ui.collectAsState()
+    val demo by derivVm.demo.collectAsState()
     var tab by remember { mutableStateOf(Tab.HOME) }
     Scaffold(
         containerColor = Background,
@@ -76,7 +77,7 @@ private fun VelaApp(vm: SimViewModel = viewModel(), derivVm: DerivConnectionView
             Column(Modifier.fillMaxWidth().background(Background).padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 10.dp)) {
                 Text("VELALAB IA", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, color = Light)
                 Spacer(Modifier.height(3.dp))
-                Text("SIMULAÇÃO INTERNA  •  PESQUISA EXPERIMENTAL", style = MaterialTheme.typography.labelSmall, color = Accent)
+                Text("DERIV DEMO  •  AUTOMAÇÃO EXPERIMENTAL", style = MaterialTheme.typography.labelSmall, color = Accent)
             }
         },
         bottomBar = {
@@ -102,10 +103,10 @@ private fun VelaApp(vm: SimViewModel = viewModel(), derivVm: DerivConnectionView
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                Tab.HOME -> Dashboard(state, vm, deriv)
-                Tab.TRADES -> TradeHistory(state)
+                Tab.HOME -> Dashboard(state, vm, deriv, demo)
+                Tab.TRADES -> TradeHistory(state, demo)
                 Tab.RESEARCH -> ResearchPage()
-                Tab.CONNECTION -> ConnectionPage(deriv, derivVm)
+                Tab.CONNECTION -> ConnectionPage(deriv, derivVm, state.settings)
                 Tab.SETTINGS -> RiskSettingsPage(state.settings, vm)
             }
         }
@@ -132,8 +133,13 @@ private fun SectionTitle(title: String) {
 }
 
 @Composable
-private fun Dashboard(state: SimulatorUiState, vm: SimViewModel, deriv: DerivConnectionUiState) {
+private fun Dashboard(state: SimulatorUiState, vm: SimViewModel, deriv: DerivConnectionUiState, demo: DemoBotState) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("ROBÔ DERIV DEMO: " + demo.status + " • resultado hoje: " + money(demo.todayProfit),
+            color = if (demo.todayProfit >= 0) Green else Red, fontWeight = FontWeight.Bold)
+        Text("Para operar na conta DEMO, abra a aba Conexão e inicie o robô.",
+            color = Muted, style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(8.dp))
         Surface(color = Color(0xFF1B2F43), shape = RoundedCornerShape(12.dp)) {
             Text("● SIMULAÇÃO FICTÍCIA  |  DERIV: ${deriv.status}", color = Accent, style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(12.dp))
@@ -209,9 +215,25 @@ private fun VirtualEquityChart(trades: List<SimTrade>) {
 }
 
 @Composable
-private fun TradeHistory(state: SimulatorUiState) {
+private fun TradeHistory(state: SimulatorUiState, demo: DemoBotState) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        SectionTitle("Operações fictícias")
+        SectionTitle("Operações Deriv DEMO")
+        Spacer(Modifier.height(8.dp))
+        Text("Resultado DEMO de hoje: " + money(demo.todayProfit) + " • " + demo.trades.size + " contratos liquidados",
+            color = if (demo.todayProfit >= 0) Green else Red)
+        if (demo.contractId != null) Text("Contrato aberto: #" + demo.contractId, color = Accent)
+        demo.trades.take(5).forEach { trade ->
+            Surface(color = CardDark, shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(trade.symbol + " • " + trade.direction + " • #" + trade.contractId)
+                    Text("Entrada: " + money(trade.stake) + " • Resultado: " + money(trade.profit),
+                        color = if (trade.profit >= 0) Green else Red)
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        SectionTitle("Operações fictícias • simulador interno")
         Spacer(Modifier.height(7.dp))
         Text("${state.winCount} vitórias  •  ${state.lossCount} derrotas  •  ${state.pending.size} pendentes", color = Muted)
         Spacer(Modifier.height(15.dp))
@@ -274,7 +296,9 @@ private fun ResearchPage() {
 }
 
 @Composable
-private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionViewModel) {
+private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionViewModel, settings: RiskSettings) {
+    val demo by vm.demo.collectAsState()
+    var symbol by remember { mutableStateOf("R_100") }
     var appId by remember { mutableStateOf("") }
     var pat by remember { mutableStateOf("") }
     var accountType by remember { mutableStateOf(DerivAccountType.DEMO) }
@@ -282,7 +306,7 @@ private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionVie
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionTitle("Conexão oficial • Deriv")
         Spacer(Modifier.height(8.dp))
-        Text("Consultar conta DEMO ou REAL, sem envio de ordens. O robô de simulação permanece completamente independente.", color = Muted)
+        Text("DEMO: conexão e ordens demonstrativas automáticas na Deriv. REAL: somente leitura; compras bloqueadas.", color = Muted)
         Spacer(Modifier.height(15.dp))
         InfoCard("Estado da conexão", state.status,
             if (state.status.startsWith("CONECTADO")) Green else if (state.status == "DESCONECTADO") Muted else Red,
@@ -328,6 +352,46 @@ private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionVie
         }
         BrokerDailyLossControls(accountType)
         Spacer(Modifier.height(14.dp))
+        if (accountType == DerivAccountType.DEMO) {
+            SectionTitle("ROBÔ AUTOMÁTICO • DERIV DEMO")
+            Spacer(Modifier.height(8.dp))
+            InfoCard("Estado do robô", demo.status,
+                if (demo.status == "ATIVO") Green else Accent, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Text(demo.notice, color = if (demo.status == "BLOQUEADO") Red else Muted,
+                style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            Text("Ativo (sujeito à disponibilidade da corretora)", color = Muted,
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("R_100", "1HZ100V", "frxEURUSD").forEach { choice ->
+                    FilterChip(selected = symbol == choice, onClick = { symbol = choice },
+                        enabled = demo.status != "ATIVO" && demo.status != "COMPRANDO",
+                        label = { Text(choice, style = MaterialTheme.typography.labelSmall) })
+                }
+            }
+            Text("Estratégia EMA9/EMA21 + RSI em candles fechados. Payout e vencimento em Ajustes. " +
+                "Máximo 1% por ordem DEMO e uma ordem por vez. Limite diário DEMO acima; sem martingale.",
+                color = Muted, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = { vm.startDemo(settings, symbol) },
+                    enabled = state.status.startsWith("CONECTADO") &&
+                        demo.status !in listOf("ATIVO", "COMPRANDO", "EM CONTRATO", "RECUPERANDO", "BLOQUEADO"),
+                    modifier = Modifier.weight(1f)) { Text("Iniciar DEMO") }
+                OutlinedButton(onClick = vm::pauseDemo, modifier = Modifier.weight(1f)) { Text("Pausar") }
+                OutlinedButton(onClick = vm::stopDemo, modifier = Modifier.weight(1f)) { Text("Parar") }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Opera somente com o app e conexão ativos. Em caso de compra incerta, " +
+                "bloqueia novas entradas até conciliação. Não é IA treinada e não há lucro garantido.",
+                color = Red, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            Text("Resultado DEMO hoje: " + money(demo.todayProfit) + " " + state.currency +
+                " • Perdas seguidas: " + demo.lossStreak + " • Liquidadas: " + demo.trades.size,
+                color = if (demo.todayProfit >= 0) Green else Red)
+            Spacer(Modifier.height(14.dp))
+        }
         Text("Cadastre um aplicativo PAT na Deriv e gere um token com permissões restritas. Nunca envie senha ou token por chat ou GitHub.",
             color = Muted, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
@@ -344,7 +408,7 @@ private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionVie
             pat = ""  // não salvar PAT no aparelho
         }, enabled = state.status != "CONECTANDO" && (accountType != DerivAccountType.REAL || realAcknowledged),
             modifier = Modifier.fillMaxWidth()) {
-            Text("Conectar ${accountType.displayName} — somente leitura")
+            Text(if (accountType == DerivAccountType.DEMO) "Conectar conta DEMO à Deriv" else "Conectar REAL — somente leitura")
         }
         OutlinedButton(onClick = vm::disconnect, modifier = Modifier.fillMaxWidth()) { Text("Desconectar") }
         Spacer(Modifier.height(12.dp))
@@ -388,14 +452,14 @@ private fun RiskSettingsPage(settings: RiskSettings, vm: SimViewModel) {
     if (confirmSettings != null) {
         AlertDialog(onDismissRequest = { confirmSettings = null },
             title = { Text("Confirmar aumento de risco") },
-            text = { Text("Estas configurações ampliam a exposição simulada. Deseja realmente salvá-las? A IA nunca poderá aumentá-las automaticamente.") },
+            text = { Text("Estas configurações também podem aumentar o risco da próxima sessão DEMO. Deseja salvá-las?") },
             confirmButton = { TextButton(onClick = { error = vm.saveSettings(confirmSettings!!); confirmSettings = null }) { Text("Confirmar") } },
             dismissButton = { TextButton(onClick = { confirmSettings = null }) { Text("Cancelar") } })
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         SectionTitle("Gerenciamento de banca")
         Spacer(Modifier.height(6.dp))
-        Text("Somente simulação interna. Alterações persistem no aparelho.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        Text("As configurações são usadas no simulador e no robô DEMO ao iniciar. O limite diário DEMO adicional fica na aba Conexão.", color = Muted, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(15.dp))
         DecimalField("Entrada padrão (%)", stake) { stake = it }
         DecimalField("Entrada máxima (%)", stakeMax) { stakeMax = it }
@@ -406,7 +470,7 @@ private fun RiskSettingsPage(settings: RiskSettings, vm: SimViewModel) {
         Text("Máximo simultâneo: $concurrent", color = Light, fontWeight = FontWeight.SemiBold)
         Slider(value = concurrent.toFloat(), onValueChange = { concurrent = it.toInt().coerceIn(1, 4) }, valueRange = 1f..4f, steps = 2)
         Spacer(Modifier.height(8.dp))
-        Text("Vencimento virtual", color = Light, fontWeight = FontWeight.SemiBold)
+        Text("Vencimento virtual e DEMO", color = Light, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(1 to "1 minuto", 5 to "5 minutos", 0 to "Ambos").forEach { (minutes, label) ->
