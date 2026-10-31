@@ -6,6 +6,8 @@ on:
     paths:
       - "VelaLabIA-Completo-Base.zip"
       - ".github/workflows/velalab-apk.yml"
+      - "android/**"
+      - "backend/**"
 
 permissions:
   contents: write
