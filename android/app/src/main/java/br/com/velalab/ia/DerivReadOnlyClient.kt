@@ -14,7 +14,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * API OFICIAL Deriv Options (2026). REAL somente leitura; DEMO possui envio controlado pelo motor demonstrativo.
+ * API OFICIAL Deriv Options (2026): conexões DEMO/REAL segregadas. Ordens apenas por consentimento explícito.
  * PAT jamais é salvo, registrado em log, incluído no APK ou enviado para servidor próprio.
  */
 internal class DerivReadOnlyClient {
@@ -24,12 +24,18 @@ internal class DerivReadOnlyClient {
         .build()
     private var accountSocket: WebSocket? = null
     private var publicSocket: WebSocket? = null
-    // Apenas a conta DEMO pode enviar requisicoes de trading.
+    // Envio segregado por tipo de conta: never send to the other session.
     var demoMessageListener: ((JSONObject) -> Unit)? = null
+    var realMessageListener: ((JSONObject) -> Unit)? = null
     private var connectedType: DerivAccountType? = null
 
     fun sendDemo(payload: JSONObject): Boolean {
         if (connectedType != DerivAccountType.DEMO) return false
+        return accountSocket?.send(payload.toString()) == true
+    }
+
+    fun sendReal(payload: JSONObject): Boolean {
+        if (connectedType != DerivAccountType.REAL) return false
         return accountSocket?.send(payload.toString()) == true
     }
 
@@ -114,7 +120,10 @@ internal class DerivReadOnlyClient {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val msg = JSONObject(text)
-                    if (type == DerivAccountType.DEMO) demoMessageListener?.invoke(msg)
+                    when (type) {
+                        DerivAccountType.DEMO -> demoMessageListener?.invoke(msg)
+                        DerivAccountType.REAL -> realMessageListener?.invoke(msg)
+                    }
                     if (msg.has("error") && (msg.optInt("req_id") == 1 || msg.optString("msg_type") == "balance")) {
                         onError(); webSocket.close(1000, "Erro"); return
                     }
