@@ -16,27 +16,6 @@ import kotlin.math.roundToInt
  * Funciona somente enquanto o app/conexao permanecem ativos; nao e servico 24h.
  * Ordens de compra em estado incerto NAO sao reenviadas.
  */
-data class DemoTrade(
-    val contractId: String,
-    val symbol: String,
-    val direction: String,
-    val stake: Double,
-    val profit: Double,
-    val timestamp: Long
-)
-
-data class DemoBotState(
-    val status: String = "PARADO",
-    val notice: String = "Conecte a conta REAL e inicie o robo.",
-    val contractId: String? = null,
-    val trades: List<DemoTrade> = emptyList(),
-    val todayProfit: Double = 0.0,
-    val lossStreak: Int = 0,
-    val symbol: String = "R_100",
-    val duration: Int = 5,
-    val waiting: Boolean = false
-)
-
 internal class DerivRealTradingEngine(
     context: Context,
     private val sendReal: (JSONObject) -> Boolean,
