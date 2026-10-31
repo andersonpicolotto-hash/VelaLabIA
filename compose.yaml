@@ -1,0 +1,33 @@
+# Infraestrutura preparada, NÃO implantada. A API deve ficar por trás de HTTPS e autenticação.
+services:
+  velalab-api:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      VELALAB_DB_PATH: /data/velalab.db
+      VELALAB_API_TOKEN: ${VELALAB_API_TOKEN:?Configure um token forte}
+    volumes:
+      - velalab-data:/data
+    # Exposto apenas no loopback local; HTTPS/reverse proxy devem ser configurados à parte.
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+  velalab-observer:
+    profiles: ["observer"]
+    build: ./backend
+    command: ["python", "-m", "app.observer"]
+    restart: unless-stopped
+    environment:
+      VELALAB_WATCH_SYMBOLS: ${VELALAB_WATCH_SYMBOLS:-}
+      VELALAB_DB_PATH: /data/velalab.db
+    volumes:
+      - velalab-data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+volumes:
+  velalab-data:

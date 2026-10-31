@@ -1,0 +1,13 @@
+.gradle/
+build/
+**/build/
+local.properties
+*.iml
+.idea/
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+*.db
+*.sqlite3
+*.apk

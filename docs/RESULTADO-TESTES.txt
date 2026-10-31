@@ -1,0 +1,27 @@
+VelaLab IA — verificação de desenvolvimento — 31/10/2026
+
+EXECUTADO:
+  cd backend && python -m pytest -q
+  Resultado: 22 passed in 2.79s
+  python -m compileall -q app
+  Resultado: sem erros
+  PyYAML: compose.yaml analisado com sucesso
+  kotlinc + java -jar DerivPolicyTest: 7 verificações Kotlin de URL DEMO/REAL aprovadas
+
+ABRANGÊNCIA: 10 testes anteriores; 12 testes de indicadores, backtest,
+   separação treino/validação/teste, versões e rollback, controle de risco,
+   duplicidade de reserva, resultado incerto, validação de URL real/demo,
+   requisições REST simuladas por mock, autenticação da API e observador.
+
+NÃO EXECUTADO:
+  Build Android (ausência de Android SDK e Gradle instalados; falta rede para baixar)
+  Geração de APK ou instalação no Galaxy S24 FE
+  GitHub Actions de compilação
+  Conexão com Deriv pública/autenticada real
+  Ordens DEMO ou REAL, payout efetivo, comportamento da corretora
+  Deploy em VPS ou push notifications
+  Testes de estabilidade prolongados
+
+ESTADO DE SEGURANÇA:
+  Nenhuma chave Deriv criada/recebida, nenhum saldo confirmado,
+  nenhuma ordem enviada. Código de compra isolado e bloqueado.
