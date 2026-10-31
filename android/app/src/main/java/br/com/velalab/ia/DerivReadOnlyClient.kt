@@ -14,7 +14,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * API OFICIAL Deriv Options (2026). Somente consulta, inclusive saldo REAL mediante confirmação explícita; NÃO contém buy, sell ou ordens.
+ * API OFICIAL Deriv Options (2026). REAL somente leitura; DEMO possui envio controlado pelo motor demonstrativo.
  * PAT jamais é salvo, registrado em log, incluído no APK ou enviado para servidor próprio.
  */
 internal class DerivReadOnlyClient {
@@ -24,6 +24,15 @@ internal class DerivReadOnlyClient {
         .build()
     private var accountSocket: WebSocket? = null
     private var publicSocket: WebSocket? = null
+    // Apenas a conta DEMO pode enviar requisicoes de trading.
+    var demoMessageListener: ((JSONObject) -> Unit)? = null
+    private var connectedType: DerivAccountType? = null
+
+    fun sendDemo(payload: JSONObject): Boolean {
+        if (connectedType != DerivAccountType.DEMO) return false
+        return accountSocket?.send(payload.toString()) == true
+    }
+
 
     /** GET de contas e POST de OTP; escolhe a conta pelo tipo explicitamente solicitado. */
     suspend fun getAccountWebSocketUrl(appId: String, pat: String, type: DerivAccountType): String = withContext(Dispatchers.IO) {
@@ -97,6 +106,7 @@ internal class DerivReadOnlyClient {
     fun connectAccount(url: String, type: DerivAccountType, onBalance: (Double, String) -> Unit, onError: () -> Unit) {
         require(DerivEndpointPolicy.isOfficialAccountUrl(url, type)) { "URL incompatível com conta ${type.displayName}" }
         closeAccount()
+        connectedType = type
         accountSocket = http.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 webSocket.send("""{"balance":1,"subscribe":1,"req_id":1}""")
@@ -104,7 +114,10 @@ internal class DerivReadOnlyClient {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val msg = JSONObject(text)
-                    if (msg.has("error")) { onError(); webSocket.close(1000, "Erro"); return }
+                    if (type == DerivAccountType.DEMO) demoMessageListener?.invoke(msg)
+                    if (msg.has("error") && (msg.optInt("req_id") == 1 || msg.optString("msg_type") == "balance")) {
+                        onError(); webSocket.close(1000, "Erro"); return
+                    }
                     if (msg.optString("msg_type") == "balance") {
                         val item = msg.getJSONObject("balance")
                         val value = item.getDouble("balance")
@@ -119,7 +132,7 @@ internal class DerivReadOnlyClient {
         })
     }
 
-    fun closeAccount() { accountSocket?.close(1000, "Desconectar"); accountSocket = null }
+    fun closeAccount() { connectedType = null; accountSocket?.close(1000, "Desconectar"); accountSocket = null }
     fun closePublic() { publicSocket?.close(1000, "Desconectar"); publicSocket = null }
     fun close() {
         closeAccount()
