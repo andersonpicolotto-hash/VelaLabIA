@@ -326,6 +326,8 @@ private fun ConnectionPage(state: DerivConnectionUiState, vm: DerivConnectionVie
             }
             Spacer(Modifier.height(10.dp))
         }
+        BrokerDailyLossControls(accountType)
+        Spacer(Modifier.height(14.dp))
         Text("Cadastre um aplicativo PAT na Deriv e gere um token com permissões restritas. Nunca envie senha ou token por chat ou GitHub.",
             color = Muted, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
