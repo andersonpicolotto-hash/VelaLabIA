@@ -4,7 +4,7 @@
 
 - Repositório conectado ao ChatGPT.
 - Código-fonte ampliado das fases 1–6 disponível como ZIP nesta conversa; **ainda não foi enviado à branch main**.
-- Backend: **21 testes Python** e **7 verificações Kotlin da política de endpoint** aprovados localmente.
+- Backend: **22 testes Python** e **7 verificações Kotlin da política de endpoint** aprovados localmente.
 - APK Android: **não compilado**. Integração Deriv com credenciais reais: **não testada**.
 - REAL: consulta de saldo read-only preparada; **nenhuma ordem real pode ser enviada pelo app**.
 - IA: laboratório experimental e backtesting, não sistema validado para negociar.
