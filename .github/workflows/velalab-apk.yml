@@ -21,6 +21,10 @@ jobs:
       - name: Importar pacote VelaLab IA
         shell: bash
         run: |
+          if [ -f android/settings.gradle.kts ]; then
+            echo "Codigo Android existente; nao reimportar pacote."
+            exit 0
+          fi
           test -f VelaLabIA-Completo-Base.zip
           mkdir -p _source_import
           unzip -q VelaLabIA-Completo-Base.zip -d _source_import
@@ -76,11 +80,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Preparar Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Verificar Android SDK preinstalado
+        shell: bash
+        run: |
+          test -n "${ANDROID_HOME:-}"
+          sdkmanager --version
 
       - name: Instalar plataforma Android 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Preparar Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
